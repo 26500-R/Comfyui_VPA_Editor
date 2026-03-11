@@ -70,8 +70,10 @@ class VPAImageSave:
         name_text=None,
     ):
         # 确定保存目录
+        is_abs = False  # ✅ Fix2：提前初始化，避免 save_path 为空时 is_abs 未定义
         if save_path is None or save_path.strip() == "":
             output_dir = folder_paths.get_output_directory()
+            full_output_dir = output_dir  # ✅ Fix1：补全 full_output_dir 赋值
         else:
             output_dir = save_path.strip()
             # 规范化路径，处理 Windows 的反斜杠
@@ -129,7 +131,7 @@ class VPAImageSave:
                 
             # 清理文件名中的非法字符（如果是路径分隔符 / 或 \ 则允许，用来建子文件夹）
             # 使用特定的字符集，避开末尾反斜杠转义问题
-            valid_chars = "-_.() /\ " + string.ascii_letters + string.digits
+            valid_chars = "-_.() /\\ " + string.ascii_letters + string.digits
             filename_base = "".join(c for c in filename_base if c in valid_chars)
             
             # 兼容：如果模板完全没用 index，但传入了多张图，强制在末尾加上序号
