@@ -471,10 +471,8 @@ class VPAEditorWindow {
                         const svgResult = await svgResponse.json();
                         
                         if (svgResult.success && svgResult.content) {
-                            // 预处理 SVG 内容：移除硬编码的 fill 属性，确保外部可以修改颜色
                             let processedContent = svgResult.content;
                             
-                            // 移除所有的 fill 属性，无论是内联在标签上的还是在 style 属性里的
                             processedContent = processedContent.replace(/fill="[^"]*"/ig, '');
                             processedContent = processedContent.replace(/fill:([^;"]+)(;?)/ig, '');
                             
@@ -1465,7 +1463,6 @@ class VPAEditorWindow {
         
         await this.saveLayersToServer(filename);
 
-        // Create annotation (transparent PNG)
         const annotationCanvas = document.createElement('canvas');
         annotationCanvas.width = this.baseImageWidth;
         annotationCanvas.height = this.baseImageHeight;
@@ -1476,7 +1473,6 @@ class VPAEditorWindow {
             annotationCtx.drawImage(layer.canvas, 0, 0);
         }
 
-        // Create preview (original + annotation)
         const previewCanvas = document.createElement('canvas');
         previewCanvas.width = this.baseImageWidth;
         previewCanvas.height = this.baseImageHeight;
@@ -1577,7 +1573,6 @@ class VPAEditorWindow {
             this.node.annotationData = annotationData;
             this.node.annotationBlob = annotationBlob;
             
-            // Trigger UI update using our new custom preview UI
             if (this.node.updateCustomPreviews) {
                 this.node.updateCustomPreviews(previewData);
             }
@@ -1591,7 +1586,6 @@ class VPAEditorWindow {
     }
 
     async updateNodePreview(filename) {
-        // Obsolete: We now use updateCustomPreviews attached to the node
         console.log('[VPA Editor] Native preview update skipped in favor of custom UI');
     }
 
@@ -1692,19 +1686,15 @@ app.registerExtension({
                     newUpstreamName = extractName(filename);
                 }
 
-                // If upstream name has changed (and isn't empty), or the input is empty, update the name.
-                // This will overwrite the user's edit if the upstream image actually switches to a new one.
                 if (newUpstreamName) {
                     if (editNameWidget._lastUpstreamName !== newUpstreamName || !editNameWidget.value) {
                         editNameWidget.value = newUpstreamName;
                         editNameWidget._lastUpstreamName = newUpstreamName;
-                        // Trigger callback to ensure Vue nodes update their UI properly
                         if (editNameWidget.callback) {
                             editNameWidget.callback(editNameWidget.value);
                         }
                     }
                 } else {
-                    // No upstream image, clear tracking
                     editNameWidget._lastUpstreamName = "";
                 }
             }
@@ -1764,7 +1754,6 @@ app.registerExtension({
                 return filename;
             };
 
-            // 使用 addDOMWidget 强力注入按钮和双预览UI
             const uiContainer = document.createElement("div");
             uiContainer.style.cssText = `
                 display: flex;
@@ -1774,7 +1763,6 @@ app.registerExtension({
                 margin-top: 5px;
             `;
 
-            // 清理系统中自动生成的幽灵预览图，防止UI被其挤压或重叠干扰
             function cleanupGhostWidgets() {
                 if (node.widgets) {
                     for (let i = node.widgets.length - 1; i >= 0; i--) {
@@ -1816,7 +1804,6 @@ app.registerExtension({
                 flex-shrink: 0;
             `;
 
-            // 原图预览区域
             const origLabel = document.createElement("div");
             origLabel.textContent = "📝 原图预览：";
             origLabel.style.cssText = `color: var(--input-text); font-size: 12px; margin-top: 4px; flex-shrink: 0;`;
@@ -1836,7 +1823,6 @@ app.registerExtension({
             origImg.style.cssText = `max-width: 100%; max-height: 200px; object-fit: contain; border-radius: 4px; display: none;`;
             origImgContainer.appendChild(origImg);
 
-            // 标注预览区域
             const annoLabel = document.createElement("div");
             annoLabel.textContent = "📝 标注预览：";
             annoLabel.style.cssText = `color: var(--input-text); font-size: 12px; margin-top: 4px; flex-shrink: 0;`;
@@ -1856,7 +1842,6 @@ app.registerExtension({
             annoImg.style.cssText = `max-width: 100%; max-height: 200px; object-fit: contain; border-radius: 4px; display: none;`;
             annoImgContainer.appendChild(annoImg);
 
-            // 绑定到 node 上以便外部 (Editor Window) 也可以调用
             node.updateCustomPreviews = updateCustomPreviews;
 
             function updateNodeSize() {
@@ -1869,79 +1854,125 @@ app.registerExtension({
                     };
                 }
 
-                let minHeight = 60; // 基础标题和边距高度
+                let minHeight = 60;
                 if (node.inputs) minHeight += node.inputs.length * 20;
                 if (node.outputs) minHeight += node.outputs.length * 20;
                 
                 const uiHeight = uiContainer.scrollHeight || 0;
                 let targetHeight = minHeight + uiHeight + 20;
                 
-                // 与系统算出的原始大小做对比，取最大值
                 if (node.computeSize) {
                     const sysSize = node.computeSize([node.size[0], node.size[1]]);
                     targetHeight = Math.max(targetHeight, sysSize[1]);
                 }
                 
-                // 只有当高度变化显著时才应用，避免无限循环闪烁
                 if (Math.abs(node.size[1] - targetHeight) > 2) {
                     node.setSize([node.size[0], targetHeight]);
                     if (app.graph) app.graph.setDirtyCanvas(true, true);
                 }
             }
 
-            // 监听图片加载完毕，自动撑开节点高度
             origImg.onload = updateNodeSize;
             annoImg.onload = updateNodeSize;
 
-            // 使用 ResizeObserver 监听 DOM 变化，彻底防止缩回
             const resizeObserver = new ResizeObserver(() => {
                 updateNodeSize();
             });
-            // 延迟绑定，等DOM挂载
             setTimeout(() => {
                 resizeObserver.observe(uiContainer);
             }, 100);
 
-            // 更新 UI 图像函数
+            function generateThumbnailFromData(dataUrl, maxSize = 256) {
+                return new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        let width = img.width;
+                        let height = img.height;
+                        
+                        if (width > maxSize || height > maxSize) {
+                            const scale = Math.min(maxSize / width, maxSize / height);
+                            width = Math.round(width * scale);
+                            height = Math.round(height * scale);
+                        }
+                        
+                        const canvas = document.createElement('canvas');
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        
+                        resolve(canvas.toDataURL('image/png'));
+                    };
+                    img.onerror = () => resolve(null);
+                    img.src = dataUrl;
+                });
+            }
+
             function updateCustomPreviews(forcedPreviewData = null) {
                 cleanupGhostWidgets();
                 autoFillName();
                 
-                // 1. 获取原图
                 const upFilename = getUpstreamFilename();
                 if (upFilename) {
-                    const upstreamUrl = api.fileURL(`/view?filename=${encodeURIComponent(upFilename)}&type=input`);
-                    origImg.src = upstreamUrl;
-                    origImg.style.display = "block";
+                    const thumbnailUrl = api.apiURL(`/vpa_editor/thumbnail?filename=${encodeURIComponent(upFilename)}&type=input&size=256`);
+                    const fallbackUrl = api.fileURL(`/view?filename=${encodeURIComponent(upFilename)}&type=input`);
+                    
+                    const thumbImg = new Image();
+                    thumbImg.onload = () => {
+                        origImg.src = thumbnailUrl + '&t=' + Date.now();
+                        origImg.style.display = "block";
+                        updateNodeSize();
+                    };
+                    thumbImg.onerror = () => {
+                        origImg.src = fallbackUrl + '?t=' + Date.now();
+                        origImg.style.display = "block";
+                        updateNodeSize();
+                    };
+                    thumbImg.src = thumbnailUrl + '&t=' + Date.now();
                 } else {
                     origImg.style.display = "none";
                     origImg.src = "";
                 }
 
-                // 2. 获取标注图
                 if (forcedPreviewData) {
-                    // 当点击“应用”时，直接使用生成的 Base64 预览图更新 UI，做到零延迟、100% 同步
-                    annoImg.src = forcedPreviewData;
-                    annoImg.style.display = "block";
-                    updateNodeSize();
+                    generateThumbnailFromData(forcedPreviewData, 256).then(thumbData => {
+                        if (thumbData) {
+                            annoImg.src = thumbData;
+                        } else {
+                            annoImg.src = forcedPreviewData;
+                        }
+                        annoImg.style.display = "block";
+                        updateNodeSize();
+                    });
                 } else {
                     const filename = node.getResolvedFilename();
                     if (filename) {
+                        const thumbFilename = filename + '_preview_thumb.png';
+                        const thumbUrl = api.fileURL(`/view?filename=${encodeURIComponent(thumbFilename)}&type=output&subfolder=VPA_PNG/thumbnails`);
                         const previewFilename = filename + '_preview.png';
                         const previewUrl = api.fileURL(`/view?filename=${encodeURIComponent(previewFilename)}&type=output&subfolder=VPA_PNG`);
                         
-                        const testImg = new Image();
-                        testImg.onload = () => {
-                            annoImg.src = previewUrl + '?t=' + Date.now();
+                        const thumbImg = new Image();
+                        thumbImg.onload = () => {
+                            annoImg.src = thumbUrl + '?t=' + Date.now();
                             annoImg.style.display = "block";
                             updateNodeSize();
                         };
-                        testImg.onerror = () => {
-                            annoImg.style.display = "none";
-                            annoImg.src = "";
-                            updateNodeSize();
+                        thumbImg.onerror = () => {
+                            const testImg = new Image();
+                            testImg.onload = () => {
+                                annoImg.src = previewUrl + '?t=' + Date.now();
+                                annoImg.style.display = "block";
+                                updateNodeSize();
+                            };
+                            testImg.onerror = () => {
+                                annoImg.style.display = "none";
+                                annoImg.src = "";
+                                updateNodeSize();
+                            };
+                            testImg.src = previewUrl + '?t=' + Date.now();
                         };
-                        testImg.src = previewUrl + '?t=' + Date.now();
+                        thumbImg.src = thumbUrl + '?t=' + Date.now();
                     } else {
                         annoImg.style.display = "none";
                         annoImg.src = "";
@@ -1975,21 +2006,18 @@ app.registerExtension({
                 return [width, uiContainer.scrollHeight ? uiContainer.scrollHeight + 10 : 0];
             };
 
-            // 清理并阻止 ComfyUI 原生 canvas 预览，完全依赖我们的 HTML img 标签
             const origOnDrawForeground = node.onDrawForeground;
             node.onDrawForeground = function(ctx) {
-                node.imgs = []; // 永远清空原生预览，防止背景闪烁或重叠
-                cleanupGhostWidgets(); // 持续清理其他插件乱注的图片预览
+                node.imgs = [];
+                cleanupGhostWidgets();
                 if (origOnDrawForeground) return origOnDrawForeground.apply(this, arguments);
             };
             
-            // 监听连线变化事件
             const origOnConnectionsChange = node.onConnectionsChange;
             node.onConnectionsChange = function(type, index, connected, link_info) {
                 if (origOnConnectionsChange) {
                     origOnConnectionsChange.apply(this, arguments);
                 }
-                // 当输入端口（type===1）的第一个（index===0）发生连线变化时
                 if (type === 1 && index === 0) {
                     setTimeout(() => {
                         updateCustomPreviews();
@@ -1997,7 +2025,6 @@ app.registerExtension({
                 }
             };
 
-            // 初始加载预览
             setTimeout(() => {
                 updateCustomPreviews();
             }, 200);
